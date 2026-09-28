@@ -1,0 +1,252 @@
+# Sparky Backend Implementation Plan (Revised)
+
+This document outlines the revised implementation plan for the Sparky backend, fully aligned with the technical architecture (Document 7) and database specifications (Document 8) provided.
+
+---
+
+## 1. System Architecture & Tech Stack
+
+Following the **Three-App Monorepo/Multi-App Architecture**, the backend consists of a shared API Layer written as **Next.js App Router API Routes** in Javascript.
+
+### 1.1 Backend Core Libraries & Services
+- **Database**: MongoDB Atlas + Mongoose (`src/lib/mongodb.js`) with connection caching.
+- **Authentication**: JWT `sparky_token` (15m expiry) and `sparky_refresh` (30d expiry) cookies. Passwordless OTP validation via MSG91.
+- **Validation**: Zod schemas for sanitizing input at the route level.
+- **Third-Party Integrations**:
+  - Razorpay: Payments (orders, verification, raw body webhooks).
+  - Razorpay X: Professional payouts settlement.
+  - MSG91: SMS/OTP delivery.
+  - AiSensy: WhatsApp notifications.
+  - Firebase Admin: FCM Push Notifications.
+  - Cloudinary: Media uploads (Public) and KYC documents (Private bucket, 24h signed URL generation).
+
+---
+
+## 2. Directory Structure (Target)
+
+We will structure the code as follows:
+```
+src/
+├── app/
+│   └── api/
+│       ├── auth/
+│       │   ├── send-otp/route.js
+│       │   ├── verify-otp/route.js
+│       │   ├── me/route.js
+│       │   ├── logout/route.js
+│       │   └── refresh/route.js
+│       ├── bookings/
+│       │   ├── route.js          (GET list, POST create)
+│       │   └── [id]/
+│       │       ├── route.js      (GET detail, PATCH update)
+│       │       ├── cancel/route.js
+│       │       ├── reschedule/route.js
+│       │       ├── start/route.js
+│       │       ├── complete/route.js
+│       │       ├── arrive/route.js
+│       │       ├── status/route.js
+│       │       └── track/route.js
+│       ├── payments/
+│       │   ├── create-order/route.js
+│       │   ├── verify/route.js
+│       │   └── webhook/route.js
+│       ├── services/
+│       │   ├── route.js
+│       │   └── [slug]/route.js
+│       ├── availability/
+│       │   ├── route.js
+│       │   └── slots/route.js
+│       ├── home/route.js
+│       ├── search/route.js
+│       ├── categories/route.js
+│       ├── cities/route.js
+│       ├── coupons/
+│       │   ├── validate/route.js
+│       │   └── my-coupons/route.js
+│       ├── reviews/route.js
+│       ├── customers/
+│       │   └── [id]/
+│       │       ├── route.js
+│       │       ├── addresses/
+│       │       │   ├── route.js
+│       │       │   └── [addressId]/route.js
+│       │       ├── wallet/route.js
+│       │       └── referral/route.js
+│       ├── professionals/
+│       │   ├── register/route.js
+│       │   └── [id]/
+│       │       ├── route.js
+│       │       ├── kyc/route.js
+│       │       ├── status/route.js
+│       │       ├── location/route.js
+│       │       ├── jobs/
+│       │       │   ├── route.js
+│       │       │   └── [jid]/
+│       │       │       ├── accept/route.js
+│       │       │       └── decline/route.js
+│       │       ├── earnings/route.js
+│       │       ├── payouts/route.js
+│       │       └── availability/route.js
+│       ├── support/
+│       │   └── tickets/
+│       │       ├── route.js
+│       │       └── [id]/
+│       │           ├── route.js
+│       │           └── messages/route.js
+│       ├── notifications/
+│       │   ├── route.js
+│       │   ├── [id]/read/route.js
+│       │   └── fcm-token/route.js
+│       ├── safety/
+│       │   ├── report/route.js
+│       │   └── emergency/route.js
+│       ├── upload/
+│       │   ├── public/route.js
+│       │   └── private/route.js
+│       ├── analytics/
+│       │   └── event/route.js
+│       └── admin/
+│           ├── dashboard/route.js
+│           ├── bookings/
+│           │   ├── route.js
+│           │   └── [id]/
+│           │       └── route.js
+│           ├── customers/route.js
+│           ├── professionals/
+│           │   ├── route.js
+│           │   └── [id]/
+│           │       ├── verify/route.js
+│           │       ├── documents/route.js
+│           │       └── suspend/route.js
+│           ├── services/route.js
+│           ├── categories/route.js
+│           ├── coupons/route.js
+│           ├── payments/route.js
+│           ├── refunds/route.js
+│           ├── payouts/
+│           │   ├── route.js
+│           │   └── run-weekly/route.js
+│           ├── support/
+│           │   └── tickets/
+│           │       ├── route.js
+│           │       └── [id]/route.js
+│           ├── reviews/route.js
+│           ├── reports/route.js
+│           ├── analytics/
+│           │   ├── revenue/route.js
+│           │   ├── bookings/route.js
+│           │   ├── professionals/route.js
+│           │   └── customers/route.js
+│           ├── audit-logs/route.js
+│           └── notifications/route.js
+├── lib/
+│   ├── mongodb.js
+│   ├── apiResponse.js
+│   ├── validate.js
+│   ├── auth.js
+│   ├── rateLimit.js
+│   ├── config.js
+│   ├── logger.js
+│   ├── cloudinary.js
+│   ├── sms.js              (MSG91)
+│   ├── priceCalculator.js
+│   ├── dispatch.js
+│   └── notifications/
+│       ├── index.js
+│       ├── whatsapp.js
+│       ├── sms.js
+│       ├── push.js
+│       └── email.js
+└── models/
+    ├── User.js
+    ├── OtpSession.js
+    ├── Customer.js
+    ├── Professional.js
+    ├── ProfessionalDocuments.js
+    ├── ProfessionalAvailability.js
+    ├── Address.js
+    ├── City.js
+    ├── Zone.js
+    ├── Category.js
+    ├── Service.js
+    ├── ServicePackage.js
+    ├── ServiceAddon.js
+    ├── Booking.js
+    ├── Payment.js
+    ├── ProfessionalEarning.js
+    ├── ProfessionalPayout.js
+    ├── Review.js
+    ├── Coupon.js
+    ├── CouponUsage.js
+    ├── Wallet.js
+    ├── WalletTransaction.js
+    ├── SupportTicket.js
+    ├── Notification.js
+    ├── LocationHistory.js
+    ├── SafetyIncident.js
+    ├── AuditLog.js
+    └── AnalyticsEvent.js
+```
+
+---
+
+## 3. Database Schema Implementation Plan
+
+We will create Mongoose models matching Document 8 exactly:
+
+1. **`User`**: Base record containing unique indexed `phone` (with regex `/^[6-9]\d{9}$/`), sparse unique `email`, `role`, verification statuses, login lock parameters (`loginAttempts`, `lockUntil`), and FCM tokens.
+2. **`OtpSession`**: OTP phone verification session. Uses MongoDB TTL index on `expiresAt` set to 10 minutes. Plaintext OTP is stored hashed with `bcrypt`.
+3. **`Customer`**: 1:1 extends `User`. Contains `walletBalance` in paise, `loyaltyCoins`, `membershipPlan`, and unique `referralCode`.
+4. **`Professional`**: 1:1 extends `User`. Stores 2dsphere indexes for `currentLocation` and `homeAddress.coordinates`. Stores status transitions, rating averages, bank details, and Razorpay payouts meta.
+5. **`ProfessionalDocuments`**: Stored separately. Holds document status and URLs for KYC (Aadhaar, PAN, certificates, police check). Verified status, reviewed timestamps.
+6. **`ProfessionalAvailability`**: Weekly schedule tracking (active days, start/end hours, breaks), blocked dates, and override options.
+7. **`City`** & **`Zone`**: Geographic zones for service boundaries. Zones contain GeoJSON polygons and dynamic `pricingMultiplier` / `surgeMultiplier`.
+8. **`Category`**, **`Service`**, **`ServicePackage`**, and **`ServiceAddon`**: Complete catalogue structure.
+   - Pricing fields in Mongoose packages/addons are strict integers representing paise.
+9. **`Address`**: GeoJSON Point coordinates, links to resolved `zoneId`. Limit of 5 addresses per customer.
+10. **`Booking`**: Booking number formatted as `SP + YYMMDD + 4-digit sequence`. Deeply nested snapshots of `serviceAddressSnapshot` and `pricing` structure (frozen at the moment of booking creation). Stores start/complete OTP hashes (bcrypt).
+11. **`Payment`**: Connects Razorpay Order IDs, capturing transaction signatures and raw webhook log history.
+12. **`Review`**: Individual review per booking rating the professional and service overall, triggering real-time atomic updates of ratings on both professionals and services.
+13. **`Coupon`** & **`CouponUsage`**: Flat or percentage promo codes. Enforces scope exclusions (city/service limits) and first-booking constraints.
+14. **`Wallet`** & **`WalletTransaction`**: Tracks credits/debits in paise (e.g. referral rewards, booking refunds).
+15. **`Payouts`** (or `ProfessionalPayout`): Weekly payouts settling COMPLETED booking totals to professionals.
+16. **`SupportTicket`**: Message logs, assigned support admin, SLA deadlines, and breach markers.
+17. **`Notification`**: Channel delivery records (push, WhatsApp, SMS, email) and read receipts.
+18. **`LocationHistory`**: Coordinates log for professionals in transit.
+19. **`SafetyIncident`**: Critical reports and panic button/SOS trigger logs.
+20. **`AuditLog`**: Read-only ledger throwing errors on updates/deletes with auto-redaction of PII.
+21. **`AnalyticsEvent`**: Batch-ingestion schema for system telemetry.
+
+---
+
+## 4. Key Business Engines & Services
+
+We will build the following service components:
+
+- **`pricingEngine.js`**: Server-side pricing helper calculating subtotal, surge pricing, flat/percent coupons, flat ₹29 convenience fee, and 18% GST on convenience fee only. Professional payout is 75% of service + addons price.
+- **`dispatchEngine.js`**: Sequential dispatch matching coordinates and skills. Scores professionals using:
+  `Score = (Distance × 0.30) + (Availability × 0.20) + (Skill × 0.15) + (Rating × 0.20) + (Reliability × 0.10) + (Workload × 0.05) × PriorityMultiplier`
+  Fails over after 3 declines or 3-minute timeouts using a polling function.
+- **`bookingStateMachine.js`**: Enforces transitions across the 18 states. Handles start OTP and complete OTP verification using bcrypt comparison.
+- **`availabilityService.js`**: Aggregate availability querying weeklySchedule and existing booking windows, adding a 30-minute buffer window for travel time.
+- **`cancellationService.js`**: Calculates refund percentage (>4h: 100%, <4h: 80%, <1h: 50% refund).
+
+---
+
+## 5. Security & Validation Controls
+- All sensitive input validated with **Zod**.
+- Sensitive information (e.g. OTPs, passwords, PII, full Aadhaar/PAN) is excluded from log captures (`logger.js`).
+- Database modifications on `AuditLog` are disabled at the Mongoose middleware level.
+- Razorpay webhook verifies webhook signatures using `crypto.createHmac` on the raw incoming body.
+
+---
+
+## 6. Open Questions / Confirmations
+1. **Mocking External APIs**: We will write full mock execution paths for MSG91 (SMS), AiSensy (WhatsApp), Razorpay Payments, and Firebase FCM so that the backend is fully testable and functional in development mode without needing live keys.
+2. **First Setup Admin Creation**: For administrative bootstrapping, would you like a special header checker or an env secret key to register the first admin?
+
+---
+
+## 7. Verification Plan
+- **Production Build**: Verify all paths build correctly with `npm run build`.
+- **API Tests**: Implement tests under `src/__tests__/` checking otp verify, pricing roundings, cancellation windows, and the scoring algorithm.

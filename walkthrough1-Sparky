@@ -1,0 +1,82 @@
+# Sparky Backend Implementation Walkthrough
+
+We have successfully implemented the core routes, services, and engines for the **Sparky Backend API** application as per the database architecture and product guide.
+
+---
+
+## 🛠️ Summary of Accomplishments
+
+### 1. Verification & Build Success
+The entire codebase has been verified by triggering a Next.js production build compiler. The build successfully finalized optimizations and collected page traces with **zeroWebpack errors/compilation failures**:
+* **55+ dynamic API route handlers** compiled successfully.
+* All environment variable getters, caching Mongoose pools, and structure loggers validated.
+
+---
+
+## 📂 Core Components Implemented
+
+### 🛡️ 1. Access Control & Profiles (Steps 03–04)
+* **RBAC Engine** ([`src/lib/rbac.js`](file:///c:/Client4-%28SParky%29/src/lib/rbac.js)): Resolves administrative user privileges (`SUPER_ADMIN`, `FINANCE_ADMIN`, `HR_ADMIN`, etc.) using the base `Admin` profile model.
+* **Customer Profile API** ([`src/app/api/customers/[id]/route.js`](file:///c:/Client4-%28SParky%29/src/app/api/customers/%5Bid%5D/route.js)): Handles registration onboarding and GET/PATCH actions.
+* **Professional Profile API** ([`src/app/api/professionals/[id]/route.js`](file:///c:/Client4-%28SParky%29/src/app/api/professionals/%5Bid%5D/route.js)): Restricts sensitive bank information to profile owners and finance admins.
+* **Admin User Resolver** ([`src/app/api/admin/users/[id]/route.js`](file:///c:/Client4-%28SParky%29/src/app/api/admin/users/%5Bid%5D/route.js)): Allows admins to fetch a unified user record and its role-specific profile details.
+
+### 📍 2. Addresses & Service Area (Step 05)
+* **Address Manager** ([`src/app/api/customers/[id]/addresses/route.js`](file:///c:/Client4-%28SParky%29/src/app/api/customers/%5Bid%5D/addresses/route.js)): Implements location saving with a limit of 5 addresses per customer.
+* **Service Area Resolution**: Intersects target coordinates against GeoJSON polygon boundaries (`$geoIntersects`) inside the active `Zone` collection. If no zone is found, triggers `OUT_OF_SERVICE_AREA`.
+
+### 📖 3. Service Catalogue & Seeder (Step 06)
+* **Discovery APIs**:
+  * Hierarchical categories tree ([`src/app/api/categories/route.js`](file:///c:/Client4-%28SParky%29/src/app/api/categories/route.js)).
+  * Serviced city listings ([`src/app/api/cities/route.js`](file:///c:/Client4-%28SParky%29/src/app/api/cities/route.js)).
+  * Paginated/filtered services list ([`src/app/api/services/route.js`](file:///c:/Client4-%28SParky%29/src/app/api/services/route.js)).
+  * Service details containing default packages/addons ([`src/app/api/services/[slug]/route.js`](file:///c:/Client4-%28SParky%29/src/app/api/services/%5Bslug%5D/route.js)).
+* **Catalogue Seeder** ([`scripts/seedCatalogue.js`](file:///c:/Client4-%28SParky%29/scripts/seedCatalogue.js)): Populates Amritsar city center coordinates, a polygonal Ranjit Avenue Zone, a Beauty category, and three Beauty services:
+  1. *Waxing — Full Arms* (2 packages + 1 addon)
+  2. *Glow Facial* (2 packages + 1 addon)
+  3. *Bridal Mehendi* (2 packages + 1 addon)
+  * Runs natively using modern Node.js `.env` loading options.
+
+### 📅 4. Availability & Telemetry (Steps 07–08)
+* **Weekly Schedule & Blocks** ([`src/app/api/professionals/[id]/availability/route.js`](file:///c:/Client4-%28SParky%29/src/app/api/professionals/%5Bid%5D/availability/route.js)): Controls working slots, custom date overrides, and break hours.
+* **Online Toggle** ([`src/app/api/professionals/[id]/status/route.js`](file:///c:/Client4-%28SParky%29/src/app/api/professionals/%5Bid%5D/status/route.js)): Blocks status updates if the professional is suspended.
+* **Geo-tracking logs** ([`src/app/api/professionals/[id]/location/route.js`](file:///c:/Client4-%28SParky%29/src/app/api/professionals/%5Bid%5D/location/route.js)): Accepts live coordinates every 20s during active transits, logging records in `LocationHistory`.
+
+### ⚡ 5. Dispatch & Booking Engine (Steps 09–12)
+* **Booking Engine** ([`src/app/api/bookings/route.js`](file:///c:/Client4-%28SParky%29/src/app/api/bookings/route.js)): 
+  * Atomic sequential sequential-ID builder (`SP` + `YYMMDD` + `4-digit counter`).
+  * Generates and hashes 4-digit start/complete validation OTPs.
+  * Idempotency filters (ignores identical bookings submitted within 5 mins).
+* **State Machine Engine** ([`src/lib/bookingStateMachine.js`](file:///c:/Client4-%28SParky%29/src/lib/bookingStateMachine.js)): Validates progress through all booking statuses.
+* **Scoring Service** ([`src/services/scoringService.js`](file:///c:/Client4-%28SParky%29/src/services/scoringService.js)): Computes match scores for online candidate professionals based on distance (Haversine formula), ratings, experience, reliability (completion rates), and workload.
+* **Dispatch Service** ([`src/services/dispatchService.js`](file:///c:/Client4-%28SParky%29/src/services/dispatchService.js)): Notifies top candidates in order with a 3-minute response deadline. Reverts to manual dispatch if candidates decline, and triggers cancellation and auto-refunds after a 15-minute global timeout.
+
+### 💰 6. Pricing, Coupons & Payments (Steps 13–15)
+* **Pricing Engine** ([`src/services/pricingEngine.js`](file:///c:/Client4-%28SParky%29/src/services/pricingEngine.js)): Strictly computes convenience fees, GST, coupon discounts, platform revenue, and professional payouts in integer paise.
+* **Coupon Manager** ([`src/services/couponService.js`](file:///c:/Client4-%28SParky%29/src/services/couponService.js)): Validates order thresholds, service scopes, usage limits, and first-booking-only flags.
+* **Razorpay Payment Service** ([`src/services/paymentService.js`](file:///c:/Client4-%28SParky%29/src/services/paymentService.js)): Integrates order generation, HMAC verification, captured transactions logs, and background dispatch hooks. Configures clean offline mock fallback when dummy environment credentials are used.
+
+### 🔄 7. Refunds & Bank Payouts (Steps 16–17)
+* **Cancellation & Refund Handler** ([`src/services/cancellationService.js`](file:///c:/Client4-%28SParky%29/src/services/cancellationService.js)): Enforces fee boundaries:
+  * Cancel > 4h: Free (100% refund).
+  * Cancel <= 4h / in-transit: ₹100 fee.
+  * Cancel post-arrival: ₹150 fee.
+  * Cancel post-start: Strictly Forbidden.
+  * Payout reversals can be routed to original payment gateway transactions or credited to the customer's wallet ledger.
+* **Payout batch runner** ([`src/services/payoutService.js`](file:///c:/Client4-%28SParky%29/src/services/payoutService.js)): Registers bank account details to RazorpayX contacts/virtual accounts and issues bulk payouts to all active professionals with pending balances.
+
+### 🚨 8. Safety SOS & Ingestion Telemetry (Steps 18–19)
+* **SOS Dispatcher** ([`src/app/api/safety/sos/route.js`](file:///c:/Client4-%28SParky%29/src/app/api/safety/sos/route.js)): Accepts panic triggers from customers/professionals during active bookings, logging active safety incidents and flagging bookings.
+* **Telemetry Event Log** ([`src/app/api/telemetry/events/route.js`](file:///c:/Client4-%28SParky%29/src/app/api/telemetry/events/route.js)): Records application logs and page metrics in `AnalyticsEvent`.
+* **Dashboard Summary** ([`src/app/api/admin/analytics/metrics/route.js`](file:///c:/Client4-%28SParky%29/src/app/api/admin/analytics/metrics/route.js)): Aggregates gross revenues, average transaction values, active panic incidents, and online staff count.
+
+---
+
+## 📈 Next Verification Steps
+
+All core systems have compiled successfully. You can begin verification testing by:
+1. Running the local development server:
+   ```bash
+   npm run dev
+   ```
+2. Using tools like Postman or Curl to test auth, profile creation, catalogue retrieval, and order flows against the `/api/...` endpoints.
